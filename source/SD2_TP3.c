@@ -40,6 +40,15 @@
 #include "MKL46Z4.h"
 #include "fsl_debug_console.h"
 /* TODO: insert other include files here. */
+#include "SD2_board.h"
+#include "fsl_lpsci.h"
+#include "fsl_port.h"
+#include "board.h"
+#include "MKL46Z4.h"
+#include "pin_mux.h"
+#include "uart0_drv.h"
+#include "mma8451.h"
+#include "MEF.h"
 
 /* TODO: insert other definitions and declarations here. */
 
@@ -48,25 +57,32 @@
  */
 int main(void) {
 
-    /* Init board hardware. */
-    BOARD_InitBootPins();
-    BOARD_InitBootClocks();
-    BOARD_InitBootPeripherals();
-#ifndef BOARD_INIT_DEBUG_CONSOLE_PERIPHERAL
-    /* Init FSL debug console. */
-    BOARD_InitDebugConsole();
-#endif
+	BOARD_InitBootClocks();
 
-    PRINTF("Hello World\n");
+	// Se inicializan funciones de la placa
+	board_init();
+
+	/* =========== I2C =================== */
+	SD2_I2C_init();
+
+	/* =========== MMA8451 ================ */
+	mma8451_init_continuous();
+	mma8451_setDataRate(DR_12p5hz);
+
+	//Inicializa driver de UART0
+	uart0_drv_init();
+
+	//inicializa interrupción de systick cada 1 ms
+	SysTick_Config(SystemCoreClock / 1000U);
+
+	/* ===== MEF ===== */
+	MEF_init();
 
     /* Force the counter to be placed into memory. */
     volatile static int i = 0 ;
     /* Enter an infinite loop, just incrementing a counter. */
     while(1) {
-        i++ ;
-        /* 'Dummy' NOP to allow source level single stepping of
-            tight while() loop */
-        __asm volatile ("nop");
+    	MEF_tick();
     }
     return 0 ;
 }
