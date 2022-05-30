@@ -39,25 +39,24 @@
 #include <stdbool.h>
 
 // Project Included Files
-#include "SD2_board.h"
-#include "fsl_lpsci.h"
+#include "SD2_board_KL43.h"
+#include "fsl_lpuart.h"
 #include "fsl_port.h"
-#include "fsl_lpsci_dma.h"
+#include "fsl_lpuart_dma.h"
 #include "fsl_dmamux.h"
 #include "board.h"
-#include "MKL46Z4.h"
+#include "MKL43Z4.h"
 #include "pin_mux.h"
 #include "uart0_drv.h"
 
 /*==================[macros and definitions]=================================*/
-#define LPSCI_TX_DMA_CHANNEL 0U
-
+#define LPUART_TX_DMA_CHANNEL 0U
 #define TX_BUFFER_DMA_SIZE  32
 
 /*==================[internal data declaration]==============================*/
 static uint8_t txBuffer_dma[TX_BUFFER_DMA_SIZE];
-static lpsci_dma_handle_t lpsciDmaHandle;
-static dma_handle_t lpsciTxDmaHandle;
+static lpuart_dma_handle_t lpuartDmaHandle;
+static dma_handle_t lpuartTxDmaHandle;
 volatile bool txOnGoing = false;
 
 /*==================[internal functions declaration]=========================*/
@@ -67,67 +66,66 @@ volatile bool txOnGoing = false;
 /*==================[internal functions definition]==========================*/
 
 /* UART user callback */
-static void LPSCI_UserCallback(UART0_Type *base, lpsci_dma_handle_t *handle, status_t status, void *userData)
-{
-    if (kStatus_LPSCI_TxIdle == status)
-    {
+static void LPUART_UserCallback(LPUART_Type *base, lpuart_dma_handle_t *handle, status_t status, void *userData){
+
+    if (kStatus_LPUART_TxIdle == status){
         txOnGoing = false;
     }
 }
 
 /*==================[external functions definition]==========================*/
 
-void uart0_drv_init(void)
-{
-    lpsci_config_t config;
+void uart0_drv_init(void){
+
+	lpuart_config_t config;
 
 
     CLOCK_SetLpsci0Clock(0x1U);
 
-    /* PORTA1 (pin 35) is configured as UART0_RX */
+    /* PORTA1 (pin 35) is configured as LPUART0_RX */
     PORT_SetPinMux(PORTA, 1U, kPORT_MuxAlt2);
 
-    /* PORTA2 (pin 36) is configured as UART0_TX */
+    /* PORTA2 (pin 36) is configured as LPUART0_TX */
     PORT_SetPinMux(PORTA, 2U, kPORT_MuxAlt2);
 
     /*
-     * config.parityMode = kLPSCI_ParityDisabled;
-     * config.stopBitCount = kLPSCI_OneStopBit;
+     * config.parityMode = kLPUART_ParityDisabled;
+     * config.stopBitCount = kLPUART_OneStopBit;
      * config.enableTx = false;
      * config.enableRx = false;
      */
-    LPSCI_GetDefaultConfig(&config);
+    LPUART_GetDefaultConfig(&config);
     config.baudRate_Bps = 115200;
-    config.parityMode = kLPSCI_ParityDisabled;
-    config.stopBitCount = kLPSCI_OneStopBit;
+    config.parityMode = kLPUART_ParityDisabled;
+    config.stopBitCount = kLPUART_OneStopBit;
     config.enableTx = true;
     config.enableRx = true;
 
-    LPSCI_Init(UART0, &config, CLOCK_GetFreq(kCLOCK_CoreSysClk));
+    LPUART_Init(LPUART0, &config, CLOCK_GetFreq(kCLOCK_CoreSysClk));
 
     /* Habilita interrupciones */
-    LPSCI_EnableInterrupts(UART0, kLPSCI_TransmissionCompleteInterruptEnable);
-    EnableIRQ(UART0_IRQn);
+    LPUART_EnableInterrupts(LPUART0, kLPUART_TransmissionCompleteInterruptEnable);
+    EnableIRQ(LPUART0_IRQn);
 
     /* CONFIGURACIÓN DMA (sólo para TX) */
     /* Init DMAMUX */
     DMAMUX_Init(DMAMUX0);
 
-    /* Set channel for LPSCI  */
-    DMAMUX_SetSource(DMAMUX0, LPSCI_TX_DMA_CHANNEL, kDmaRequestMux0LPSCI0Tx);
-    DMAMUX_EnableChannel(DMAMUX0, LPSCI_TX_DMA_CHANNEL);
+    /* Set channel for LPUART  */
+    DMAMUX_SetSource(DMAMUX0, LPUART_TX_DMA_CHANNEL, kDmaRequestMux0LPUART0Tx);
+    DMAMUX_EnableChannel(DMAMUX0, LPUART_TX_DMA_CHANNEL);
 
     /* Init the DMA module */
     DMA_Init(DMA0);
-    DMA_CreateHandle(&lpsciTxDmaHandle, DMA0, LPSCI_TX_DMA_CHANNEL);
+    DMA_CreateHandle(&lpuartTxDmaHandle, DMA0, LPUART_TX_DMA_CHANNEL);
 
-    /* Create LPSCI DMA handle. */
-    LPSCI_TransferCreateHandleDMA(
-            UART0,
-            &lpsciDmaHandle,
-            LPSCI_UserCallback,
+    /* Create LPUART DMA handle. */
+    LPUART_TransferCreateHandleDMA(
+            LPUART0,
+            &lpuartDmaHandle,
+            LPUART_UserCallback,
             NULL,
-            &lpsciTxDmaHandle,
+            &lpuartTxDmaHandle,
             NULL);
 }
 
@@ -138,19 +136,17 @@ void uart0_drv_init(void)
  ** \param[in] size tamaño del buffer
  ** \return cantidad de bytes enviados
  **/
-int32_t uart0_drv_envDatos(uint8_t *pBuf, int32_t size)
-{
-    lpsci_transfer_t xfer;
+int32_t uart0_drv_envDatos(uint8_t *pBuf, int32_t size){
+    lpuart_transfer_t xfer;
 
-    if (txOnGoing)
-    {
+    if (txOnGoing){
         size = 0;
     }
-    else
-    {
+    else{
         /* limita size */
-        if (size > TX_BUFFER_DMA_SIZE)
+        if (size > TX_BUFFER_DMA_SIZE){
             size = TX_BUFFER_DMA_SIZE;
+        }
 
         // Hace copia del buffer a transmitir en otro arreglo
         memcpy(txBuffer_dma, pBuf, size);
@@ -159,31 +155,27 @@ int32_t uart0_drv_envDatos(uint8_t *pBuf, int32_t size)
         xfer.dataSize = size;
 
         txOnGoing = true;
-        LPSCI_TransferSendDMA(UART0, &lpsciDmaHandle, &xfer);
+        LPUART_TransferSendDMA(LPUART0, &lpuartDmaHandle, &xfer);
 
-        LPSCI_EnableInterrupts(UART0, kLPSCI_TransmissionCompleteInterruptEnable);
-
+        //LPUART_EnableInterrupts(LPUART0, kLPUART_TransmissionCompleteInterruptEnable);
 
     }
 
     return size;
 }
 
+void LPUART0_IRQHandler(void){
 
-void UART0_IRQHandler(void)
-{
-
-    if ( (kLPSCI_TransmissionCompleteFlag)            & LPSCI_GetStatusFlags(UART0) &&
-         (kLPSCI_TransmissionCompleteInterruptEnable) & LPSCI_GetEnabledInterrupts(UART0) )
+    if ( (kLPUART_TransmissionCompleteFlag)            & LPUART_GetStatusFlags(LPUART0) &&
+         (kLPUART_TransmissionCompleteInterruptEnable) & LPUART_GetEnabledInterrupts(LPUART0) )
     {
-        LPSCI_DisableInterrupts(UART0, kLPSCI_TransmissionCompleteInterruptEnable);
-        LPSCI_ClearStatusFlags(UART0, kLPSCI_TransmissionCompleteFlag);
+        LPUART_DisableInterrupts(LPUART0, kLPUART_TransmissionCompleteInterruptEnable);
+        LPUART_ClearStatusFlags(LPUART0, kLPUART_TransmissionCompleteFlag);
 
-        //Enciende led verde para indicar finalización de transmisión por UART0
+        //Enciende led verde para indicar finalización de transmisión por LPUART0
         board_setLed(BOARD_LED_ID_VERDE, BOARD_LED_MSG_ON);
 
     }
-
 
 }
 

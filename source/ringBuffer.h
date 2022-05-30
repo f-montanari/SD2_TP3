@@ -1,6 +1,7 @@
-/* Copyright 2018, DSI FCEIA UNR - Sistemas Digitales 2
+/* Copyright 2017, DSI FCEIA UNR - Sistemas Digitales 2
  *    DSI: http://www.dsi.fceia.unr.edu.ar/
- * Copyright 2018, Gustavo Muro
+ * Copyright, Diego Alegrechi
+ * Copyright, Gustavo Muro
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -31,11 +32,12 @@
  *
  */
 
-#ifndef KEY_H_
-#define KEY_H_
+#ifndef RING_BUFFER_H_
+#define RING_BUFFER_H_
 
 /*==================[inclusions]=============================================*/
-#include "SD2_board_KL43.h"
+#include "stdint.h"
+#include "stdbool.h"
 
 /*==================[cplusplus]==============================================*/
 #ifdef __cplusplus
@@ -45,13 +47,60 @@ extern "C" {
 /*==================[macros]=================================================*/
 
 /*==================[typedef]================================================*/
-
+typedef struct{
+    int32_t indexRead;
+    int32_t indexWrite;
+    int32_t count;
+    int32_t size;
+    uint8_t *pBuf;
+}ringBuferData_struct;
 /*==================[external data declaration]==============================*/
 
 /*==================[external functions definition]==========================*/
-void key_init(void);
-bool key_getPressEv(board_swId_enum id);
-void key_periodicTask1ms(void);
+
+/** \brief inicializa buffer circular de bytes
+ **
+ ** \param[in] size tamaño del buffer
+ **
+ ** \return puntero a buffer circular, NULL si no se pudo crear
+ **/
+void *ringBuffer_init(int32_t size);
+
+/** \brief libera de memoria buffer circular
+ **
+ ** \param[in] pRb puntero al buffer circular
+ **
+ **/
+void ringBuffer_deInit(void *pRb);
+
+/** \brief pone nuevo dato en el buffer circular
+ ** si el buffer esta lleno se pisa el dato más antiguo
+ ** y se avanza el puntero de lectura
+ **
+ ** \param[inout] pRb puntero al buffer circular
+ ** \param[in] data dato a colocar en el buffer
+ **
+ ** \return true si se pudo poner el dato correctamente
+ **         false si se puso y se piso un dato antiguo
+ **/
+bool ringBuffer_putData(void *pRb, uint8_t data);
+
+/** \brief devuelve dato más antiguo del buffer
+ **
+ ** \param[inout] pRb puntero al buffer circular
+ ** \param[in] data puntero a donde guardar el dato
+ **
+ ** \return true si se extrajo el dato del buffer
+ **         false si no había datos en el buffer
+ **/
+bool ringBuffer_getData(void *pRb, uint8_t *data);
+
+/* TODO: agregar comentarios */
+bool ringBuffer_isFull(void *pRb);
+
+/* TODO: agregar comentarios */
+bool ringBuffer_isEmpty(void *pRb);
+
 
 
 /*==================[cplusplus]==============================================*/
@@ -60,4 +109,4 @@ void key_periodicTask1ms(void);
 #endif
 
 /*==================[end of file]============================================*/
-#endif /* KEY_H_ */
+#endif /* RING_BUFFER_H_ */
