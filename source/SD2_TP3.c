@@ -78,8 +78,6 @@ int main(void) {
 	/* ===== MEF ===== */
 	MEF_init();
 
-    /* Force the counter to be placed into memory. */
-    volatile static int i = 0 ;
     /* Enter an infinite loop, just incrementing a counter. */
     while(1) {
     	MEF_tick();
