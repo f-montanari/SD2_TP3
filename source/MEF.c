@@ -9,17 +9,22 @@
 #include "ringBuffer.h"
 #include "uart0_drv.h"
 
-// Enumeraciones y estructuras para determinar el comando recibido
+/* ================== [Enumeraciones y estructuras para determinar el comando recibido] ================== */
+typedef enum{
+	LED_T = 0,
+	SW_T,
+	ACC_T,
+	ERROR_T
+}TipoPeriferico;
+
 typedef enum {
-	LED = 0,
-	LED_ID_ROJO,
+	LED_ID_ROJO = 0,
 	LED_ID_VERDE,
-	SW,
 	SW_ID_1,
 	SW_ID_3,
 	ACC,
 	ID_ERROR
-}ID;
+}IdPeriferico;
 
 typedef enum {
 	ENCENDER = 0,
@@ -30,11 +35,11 @@ typedef enum {
 }TipoComando;
 
 typedef struct {
-	ID periferico;
+	IdPeriferico periferico;
 	TipoComando pedido;
 }Comando;
 
-// Enumeracion para MEF de Recepcion de datos por UART
+/* ==================[Enumeracion para MEF de Recepcion de datos por UART] ================== */
 typedef enum{
 	MefRx_EsperandoSTX = 0,
 	MefRx_LeyendoID,
@@ -44,143 +49,152 @@ typedef enum{
 	MefRx_EsperandoETX
 }MEF_Rx_estados;
 
-// funciones para MEF RX
 
+/* ==================[variables internas] ================== */
+void *cmdBuffer;
+
+/* ================== [funciones internas para MEF RX] ================== */
 /*
  * determina sobre que periferico se quiere
  * llevar a cabo la accion, dado por la
  * trama recibida por UART.
  */
-ID definePeriferico(ID tipoPeriferico, uint8_t tmpRxByte){
-	ID retVal;
+IdPeriferico definePeriferico(TipoPeriferico tipoPeriferico, uint8_t tmpRxByte){
+	IdPeriferico retVal;
 
 	switch(tipoPeriferico){
-		case LED:
+		case LED_T:
 			if(tmpRxByte == 0x31){ // ID recibido 01
 				retVal = LED_ID_ROJO;
 			}else if(tmpRxByte == 0x32){ // Id recibido 02
 				retVal = LED_ID_VERDE;
 			}else{
-				retVal = ID_ERROR;
+				retVal = ERROR_T;
 			}
 			break;
-		case SW:
+		case SW_T:
 			if(tmpRxByte == 0x31){ // ID recibido 11
 				retVal = SW_ID_1;
 			}else if(tmpRxByte == 0x33){ // ID recibido 13
 				retVal = SW_ID_3;
 			}else{
-				retVal = ID_ERROR;
+				retVal = ERROR_T;
 			}
 			break;
-		case ACC:
+		case ACC_T:
 			if(tmpRxByte == 0x30){ // ID recibido 20
 				retVal = ACC;
 			}else{
-				retVal = ID_ERROR;
+				retVal = ERROR_T;
 			}
+			break;
+		case ERROR_T:
+			retVal = ERROR_T;
 			break;
 	}
 	return retVal;
 }
 
-TipoComando definePedido(ID tipoPeriferico, uint8_t tmpRxByte){
-	TipoComando retVal;
-
-	switch(tipoPeriferico){
-		case LED:
-			if(tmpRxByte == 0x45){ // accion recibida E
-				retVal = ENCENDER;
-			}else if(tmpRxByte == 0x41){ // accion recibida A
-				retVal = APAGAR;
-			}else if(tmpRxByte == 0x54){ // accion recibida T
-				retVal = TOGGLE;
-			}else{
-				retVal = TIPO_COMANDO_ERROR;
-			}
-			break;
-		case SW:
-			retVal = LECTURA;
-			break;
-		case ACC:
-			retVal = LECTURA;
-			break;
-	}
-	return retVal;
+bool MEF_readByte(uint8_t *retPtr){
+	return (uart0_drv_recDatos(retPtr, 1) == 1);
 }
 
+
+/* ================== [funciones publicas para MEF RX] ================== */
 void MEF_RX_init(){
 	uart0_drv_init();
-	// la variable rxBuffer deberia estar definida en
-	// una libreria "globals.h" o algo similar, creo.
-	rxBuffer = ringBuffer_init(100); // ver que tamaño le damos al buffer. ¿100?
+	cmdBuffer = ringBuffer_init(RB_SIZE);
 }
 
 void MEF_RX_tick(){
 	static MEF_Rx_estados estado = MefRx_EsperandoSTX;
-	bool start, MSBok;
-	ID periferico;
-	Comando comando;
+	static bool start, MSBok, byteAvailable;
+	TipoPeriferico tmpPeriferico = ERROR_T;
+	TipoComando tmpComando = TIPO_COMANDO_ERROR;
+	static Comando comando;
+	uint8_t *rxChar;
+
+	byteAvailable = MEF_readByte(rxChar);
 
 	switch(estado){
 		case MefRx_EsperandoSTX:
-			// la variable rxByte deberia estar definida en
-			// una libreria "globals.h" o algo similar, creo.
-			if(rxByte == STX){ // ':'
-				estado = MefRx_LeyendoID;
-				start = true;
-				MSBok = false;
+			if(byteAvailable){
+				if(*rxChar == STX){ // ':'
+					estado = MefRx_LeyendoID;
+					start = true;
+					MSBok = false;
+				}
 			}
 			break;
 		case MefRx_LeyendoID:
-			if(rxByte == 0x31 && start){ // '1'
-				start = false;
-				MSBok = true;
-			}
-			if(rxByte == 0x30 && MSBok){ // '0'
-				estado = MefRx_LeyendoPerifericoMSB;
-			}
-			if( ( start && (rxByte != 0x31) ) || ( MSBok && (rxByte != 0x30) ) ){ // hubo algun error en la recepcion
-				estado = MefRx_EsperandoSTX;
+			if(byteAvailable){
+				if(*rxChar == 0x31 && start){ // '1'
+					start = false;
+					MSBok = true;
+				}
+				if(*rxChar == 0x30 && MSBok){ // '0'
+					estado = MefRx_LeyendoPerifericoMSB;
+				}
+				if( (start && (*rxChar != 0x31) ) || (MSBok && (*rxChar != 0x30)) ){ // hubo algun error en la recepcion
+					estado = MefRx_EsperandoSTX;
+				}
 			}
 			break;
 		case MefRx_LeyendoPerifericoMSB:
-			if(rxByte == 0x30){
-				periferico = LED;
-			}else if(rxByte == 0x31){
-				periferico = SW;
-			}else if(rxByte == 0x32){
-				periferico = ACC;
-			}else{
-				periferico = ID_ERROR;
-			}
-			if(periferico == ID_ERROR){
-				estado = MefRx_EsperandoSTX;
-			}else{
-				estado = MefRx_LeyendoPerifericoLSB;
+			if(byteAvailable){
+				if(*rxChar == 0x30){
+					tmpPeriferico = LED_T;
+				}else if(*rxChar == 0x31){
+					tmpPeriferico = SW_T;
+				}else if(*rxChar == 0x32){
+					tmpPeriferico = ACC_T;
+				}else{
+					tmpPeriferico = ERROR_T;
+				}
+				if(tmpPeriferico == ERROR_T){
+					estado = MefRx_EsperandoSTX;
+				}else{
+					estado = MefRx_LeyendoPerifericoLSB;
+				}
 			}
 			break;
 		case MefRx_LeyendoPerifericoLSB:
-			comando.periferico = definePeriferico(periferico, rxByte);
-			if(comando.periferico == ID_ERROR){
-				estado = MefRx_EsperandoSTX;
-			}else{
-				estado = MefRx_LeyendoAccion;
+			if(byteAvailable){
+				comando.periferico = definePeriferico(tmpPeriferico, *rxChar);
+				if(comando.periferico == ID_ERROR){
+					estado = MefRx_EsperandoSTX;
+				}else if(comando.periferico == LED_ID_ROJO || comando.periferico == LED_ID_VERDE){
+					estado = MefRx_LeyendoAccion;
+				}else{
+					estado = MefRx_EsperandoETX;
+				}
 			}
 			break;
 		case MefRx_LeyendoAccion:
-			comando.pedido = definePedido(periferico, rxByte);
-			if(comando.pedido == TIPO_COMANDO_ERROR){
-				estado = MefRx_EsperandoSTX;
-			}else{
-				estado = MefRx_EsperandoETX;
+			if(byteAvailable){
+				if(*rxChar == 0x45){ // accion recibida E
+					tmpComando = ENCENDER;
+				}else if(*rxChar == 0x41){ // accion recibida A
+					tmpComando = APAGAR;
+				}else if(*rxChar == 0x54){ // accion recibida T
+					tmpComando = TOGGLE;
+				}else{
+					tmpComando = TIPO_COMANDO_ERROR;
+				}
+				if(tmpComando == TIPO_COMANDO_ERROR){
+					estado = MefRx_EsperandoSTX;
+				}else{
+					estado = MefRx_EsperandoETX;
+					comando.pedido = tmpComando;
+				}
 			}
 			break;
 		case MefRx_EsperandoETX:
-			if(rxByte == ETX){
-				estado = MefRx_EsperandoSTX;
-				ringBuffer_putData(rxBuffer, comando); // modificar ringBuffer para que admita esta estructura
-													   // esta definido solo para uint8_t
+			if(byteAvailable){
+				if(*rxChar == ETX){
+					estado = MefRx_EsperandoSTX;
+					ringBuffer_putData(cmdBuffer, (uint8_t)&comando); // revisar. Habia pensado en hacer un RB de punteros a Comando
+				}
 			}
 			break;
 	}
