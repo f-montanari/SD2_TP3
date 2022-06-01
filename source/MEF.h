@@ -9,6 +9,7 @@
 #define MEF_H_
 
 #include "globals.h"
+#include "uart0_drv.h"
 
 #define STX 0x3A // ":"
 #define ETX 0x0A // LF
