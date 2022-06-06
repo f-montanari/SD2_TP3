@@ -281,8 +281,7 @@ static void mma8451_write_reg(uint8_t addr, uint8_t data)
 /*
  * Configura las interrupciones para los correspondientes INT1 e INT2 del chip.
  */
-static void config_port_interrupts(void)
-{
+static void config_port_interrupts(void){
 
 	const port_pin_config_t port_int_config = {
 			/* Internal pull-up/down resistor is disabled */
@@ -313,7 +312,7 @@ static void config_port_interrupts(void)
 	PORT_SetPinInterruptConfig(INT2_PORT, INT2_PIN, kPORT_InterruptFallingEdge);
 
 	NVIC_EnableIRQ(PORTC_PORTD_IRQn);
-	NVIC_SetPriority(PORTC_PORTD_IRQn, 0);
+	NVIC_SetPriority(PORTC_PORTD_IRQn, 2);
 }
 
 /*==================[external functions definition]==========================*/

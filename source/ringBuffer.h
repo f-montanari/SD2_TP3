@@ -38,6 +38,7 @@
 /*==================[inclusions]=============================================*/
 #include "stdint.h"
 #include "stdbool.h"
+#include "MEF.h" // para tener la estructura "Comando"
 
 /*==================[cplusplus]==============================================*/
 #ifdef __cplusplus
@@ -47,13 +48,7 @@ extern "C" {
 /*==================[macros]=================================================*/
 
 /*==================[typedef]================================================*/
-typedef struct{
-    int32_t indexRead;
-    int32_t indexWrite;
-    int32_t count;
-    int32_t size;
-    uint8_t *pBuf;
-}ringBuferData_struct;
+
 /*==================[external data declaration]==============================*/
 
 /*==================[external functions definition]==========================*/
@@ -101,6 +96,12 @@ bool ringBuffer_isFull(void *pRb);
 /* TODO: agregar comentarios */
 bool ringBuffer_isEmpty(void *pRb);
 
+
+void *ringBufferComando_init(int32_t size);
+bool ringBufferComando_putData(void *pRb, Comando data);
+bool ringBufferComando_getData(void *pRb, Comando *data);
+bool ringBufferComando_isFull(void *pRb);
+bool ringBufferComando_isEmpty(void *pRb);
 
 
 /*==================[cplusplus]==============================================*/

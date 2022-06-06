@@ -8,12 +8,14 @@
 #ifndef MEF_H_
 #define MEF_H_
 
-#include "globals.h"
 #include "uart0_drv.h"
+#include "SD2_board_KL43.h"
 
 #define STX 0x3A // ":"
 #define ETX 0x0A // LF
 
+/* ================== [Enumeraciones y estructuras públicas] ================== */
+// Mef Rx
 typedef enum{
 	LED_T = 0,
 	SW_T,
@@ -43,8 +45,15 @@ typedef struct __attribute__((__packed__)){
 	TipoComando pedido;
 }Comando;
 
-void MEF_RX_init();
-Comando *MEF_RX_tick(Comando*);
+// Mef Procesamiento
 
+/* ================== [Funciones públicas] ================== */
+// Mef Rx
+void MefRxInit(void);
+void MefRxTick(void*);
+
+// Mef Procesamiento
+void MefProcesamientoInit(void);
+void MefProcesamientoTick(void*);
 
 #endif /* MEF_H_ */

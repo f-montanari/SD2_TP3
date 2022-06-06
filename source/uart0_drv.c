@@ -20,9 +20,7 @@
 /*==================[macros and definitions]=================================*/
 #define TP3_UART LPUART0
 #define TP3_UART_IRQ LPUART0_IRQn
-/*
- * Ver. Esto estaba del ejemplo
- */
+#define RB_SIZE 21
 #define UART_TX_DMA_CHANNEL 0U
 #define TX_BUFFER_DMA_SIZE  32
 
@@ -49,17 +47,18 @@ static void LPUART_UserCallback(LPUART_Type *base, lpuart_dma_handle_t *handle, 
 
     if (kStatus_LPUART_TxIdle == status){
         txOnGoingDma = false;
+        txOnGoingUart = true;
     }
 }
 
 void LPUART0_IRQHandler(void){
-    if ( kLPUART_RxDataRegFullFlag & LPUART_GetStatusFlags(TP3_UART)){
+    if( kLPUART_RxDataRegFullFlag & LPUART_GetStatusFlags(TP3_UART) ){
     	rxByte = LPUART_ReadByte(TP3_UART); // limpio bandera ISR
     	ringBuffer_putData(rxRingBufferPtr, rxByte);
     }
-//    if( kLPUART_TxDataRegEmptyFlag & LPUART_GetStatusFlags(TP3_UART)){
-//    	txOnGoingUart = false;
-//    }
+    if( kLPUART_TxDataRegEmptyFlag & LPUART_GetStatusFlags(TP3_UART) ){
+    	txOnGoingUart = false;
+    }
 }
 
 /*==================[external functions definition]==========================*/
@@ -86,7 +85,7 @@ void uart0_drv_init(void){
      * config.enableRx = false;
      */
     LPUART_GetDefaultConfig(&config);
-    config.baudRate_Bps = 115200;
+    config.baudRate_Bps = 9600;
     config.parityMode = kLPUART_ParityDisabled;
     config.stopBitCount = kLPUART_OneStopBit;
     config.enableTx = true;
@@ -127,7 +126,7 @@ void uart0_drv_init(void){
 }
 
 int32_t uart0_drv_envDatos(uint8_t *pBuf, int32_t size){
-	if(txOnGoingDma && txOnGoingUart){
+	if(txOnGoingDma || txOnGoingUart){
 		return 0;
 	}else{
 		lpuart_transfer_t xfer;
@@ -135,11 +134,10 @@ int32_t uart0_drv_envDatos(uint8_t *pBuf, int32_t size){
 		if(size > TX_BUFFER_DMA_SIZE){
 			size = TX_BUFFER_DMA_SIZE;
 		}
-		memcpy(txBuffer_dma,pBuf,size);
+		memcpy(txBuffer_dma, pBuf, size);
 		xfer.data = txBuffer_dma;
 		xfer.dataSize = size;
 		txOnGoingDma = true;
-		//txOnGoingUart = true;
 		LPUART_TransferSendDMA(TP3_UART, &lpuartDmaHandle, &xfer);
 		return(size);
 	}
@@ -167,4 +165,5 @@ int32_t uart0_drv_recDatos(uint8_t *pBuf, int32_t size){
 
     return ret;
 }
+
 /*==================[end of file]============================================*/

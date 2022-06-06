@@ -8,12 +8,15 @@
 #include "MEF.h"
 #include "string.h"
 #include "ringBuffer.h"
-#include "uart0_drv.h"
+#include "mma8451.h"
+#include <stdlib.h>
+#include <stdio.h>
+#include <math.h>
 
-/* ================== [Enumeraciones y estructuras para determinar el comando recibido] ================== */
+/* ================== [Definiciones] ================== */
 
-
-/* ==================[Enumeracion para MEF de Recepcion de datos por UART] ================== */
+/* ==================[Enumeracion para estados MEF] ================== */
+// Mef Rx
 typedef enum{
 	MefRx_EsperandoSTX = 0,
 	MefRx_LeyendoID,
@@ -21,13 +24,21 @@ typedef enum{
 	MefRx_LeyendoPerifericoLSB,
 	MefRx_LeyendoAccion,
 	MefRx_EsperandoETX
-}MEF_Rx_estados;
+}MEF_Rx_e;
 
+// Mef procesamiento
+typedef enum{
+	MefProcesamiento_LeyendoComandoSiguiente = 0,
+	MefProcesamiento_EjecutandoComandoSiguiente,
+	MefProcesamiento_TransmitiendoRespuesta
+}MEF_Procesamiento_e;
 
 /* ==================[variables internas] ================== */
-//void *cmdBuffer;
+// Mef Procesamiento
 
-/* ================== [funciones internas para MEF RX] ================== */
+
+/* ================== [funciones internas] ================== */
+// Mef Rx
 /*
  * determina sobre que periferico se quiere
  * llevar a cabo la accion, dado por la
@@ -73,31 +84,107 @@ bool MEF_readByte(uint8_t *retPtr){
 	return (uart0_drv_recDatos(retPtr, 1) == 1);
 }
 
-void mefRx_guardarComando(Comando *buffer, uint8_t bufferSize, Comando data){
-	static uint8_t bufferIndex = 0;
-
-	buffer[bufferIndex] = data;
-	(bufferIndex < bufferSize-1) ? (bufferIndex++) : (bufferIndex = 0);
+// Mef Procesamiento
+uint16_t getAcc(){
+	return(sqrt( pow(mma8451_getAcX(), 2) +
+				 pow(mma8451_getAcY(), 2) +
+				 pow(mma8451_getAcZ(), 2) ));
 }
 
-
-/* ================== [funciones publicas para MEF RX] ================== */
-void MEF_RX_init(){
-	//cmdBuffer = ringBuffer_init(RB_SIZE);
+void separarEnDigitos(uint8_t *d0, uint8_t *d1, uint8_t *d2, uint16_t value){
+	*d2 = value / 100;
+	*d1 = (value - *d2 * 100) / 10;
+	*d0 = value - *d2 * 100 - *d1*10;
 }
 
-#define TEST_RX_SIZE 18
-int8_t testRx[TEST_RX_SIZE] = {STX, ':', 0x30, 0x31, 0x31, ETX, STX, 0x31, 0x30, 0x31, 0x33, ETX, STX, 0x31, 0x30, 0x32, 0x30, ETX}; // ":1001E'LF'"
+uint8_t *ejecutarComando(uint8_t *resultado, Comando *comandoSiguiente){
+	//uint8_t *resultado;
 
-Comando *MEF_RX_tick(Comando *bufferComando){
-	static MEF_Rx_estados estado = MefRx_EsperandoSTX;
+	switch(comandoSiguiente->pedido){
+		case ENCENDER:
+			if(comandoSiguiente->periferico == LED_ID_ROJO){
+				board_setLed(BOARD_LED_ID_ROJO, BOARD_LED_MSG_ON);
+				//resultado = malloc(sizeof(uint8_t)*8);
+				sprintf(resultado, ":1001E\n");
+			}else{
+				board_setLed(BOARD_LED_ID_VERDE, BOARD_LED_MSG_ON);
+				//resultado = malloc(sizeof(uint8_t)*8);
+				sprintf(resultado, ":1002E\n");
+			}
+			break;
+		case APAGAR:
+			if(comandoSiguiente->periferico == LED_ID_ROJO){
+				board_setLed(BOARD_LED_ID_ROJO, BOARD_LED_MSG_OFF);
+				//resultado = malloc(sizeof(uint8_t)*8);
+				sprintf(resultado, ":1001A\n");
+			}else{
+				board_setLed(BOARD_LED_ID_VERDE, BOARD_LED_MSG_OFF);
+				//resultado = malloc(sizeof(uint8_t)*8);
+				sprintf(resultado, ":1002A\n");
+			}
+			break;
+		case TOGGLE:
+			if(comandoSiguiente->periferico == LED_ID_ROJO){
+				board_setLed(BOARD_LED_ID_ROJO, BOARD_LED_MSG_TOGGLE);
+				//resultado = malloc(sizeof(uint8_t)*8);
+				sprintf(resultado, ":1001T\n");
+			}else{
+				board_setLed(BOARD_LED_ID_VERDE, BOARD_LED_MSG_TOGGLE);
+				//resultado = malloc(sizeof(uint8_t)*8);
+				sprintf(resultado, ":1002T\n");
+			}
+			break;
+		case LECTURA:
+			if(comandoSiguiente->periferico == SW_ID_1){
+				bool isOn;
+				isOn = board_getSw(BOARD_SW_ID_1);
+				//resultado = malloc(sizeof(uint8_t)*8);
+				if(isOn){
+					sprintf(resultado, ":1011P\n");
+				}else{
+					sprintf(resultado, ":1011N\n");
+				}
+			}else if(comandoSiguiente->periferico == SW_ID_3){
+				bool isOn;
+				isOn = board_getSw(BOARD_SW_ID_3);
+				//resultado = malloc(sizeof(uint8_t)*8);
+				if(isOn){
+					sprintf(resultado, ":1013P\n");
+				}else{
+					sprintf(resultado, ":1013N\n");
+				}
+			}else{
+				uint8_t D0, D1, D2;
+				uint16_t acc;
+				acc = getAcc();
+				separarEnDigitos(&D0, &D1, &D2, acc);
+				//resultado = malloc(sizeof(uint8_t)*9);
+				sprintf(resultado, ":1020%d%d%d\n", D2, D1, D0);
+			}
+			break;
+		case TIPO_COMANDO_ERROR:
+			// para no tener warning
+			break;
+	}
+
+	return resultado;
+}
+
+/* ================== [funciones publicas] ================== */
+// Mef Rx
+void MefRxInit(){
+
+}
+
+void MefRxTick(void *ringBufferComandos){
+	static MEF_Rx_e estado = MefRx_EsperandoSTX;
 	static bool start, byteAvailable;
 	static TipoPeriferico tmpPeriferico = ERROR_T;
 	static TipoComando tmpComando = TIPO_COMANDO_ERROR;
 	static Comando comando;
 	uint8_t rxChar;
 
-	byteAvailable = uart0_drv_recDatos(&rxChar,1);
+	byteAvailable = uart0_drv_recDatos(&rxChar, 1);
 
 	switch(estado){
 		case MefRx_EsperandoSTX:
@@ -198,13 +285,39 @@ Comando *MEF_RX_tick(Comando *bufferComando){
 					break;
 				}
 				if(rxChar == ETX){
-					estado = MefRx_EsperandoSTX;
-					return &comando;
-				}else{
-					estado = MefRx_EsperandoSTX;
+					ringBufferComando_putData(ringBufferComandos, comando);
 				}
+				estado = MefRx_EsperandoSTX;
 			}
 			break;
 	}
-	return NULL;
+}
+
+// Mef Procesamiento
+void MefProcesamientoInit(){
+
+}
+
+void MefProcesamientoTick(void *ringBufferComandos){
+	static MEF_Procesamiento_e estadoMP = MefProcesamiento_LeyendoComandoSiguiente;
+	static Comando comandoPendiente;
+	static uint8_t resultado[10];
+
+	switch(estadoMP){
+		case MefProcesamiento_LeyendoComandoSiguiente:
+			if(!ringBufferComando_isEmpty(ringBufferComandos)){
+				ringBufferComando_getData(ringBufferComandos, &comandoPendiente);
+				estadoMP = MefProcesamiento_EjecutandoComandoSiguiente;
+			}
+			break;
+		case MefProcesamiento_EjecutandoComandoSiguiente:
+			ejecutarComando(resultado, &comandoPendiente);
+			estadoMP = MefProcesamiento_TransmitiendoRespuesta;
+			break;
+		case MefProcesamiento_TransmitiendoRespuesta:
+			if( uart0_drv_envDatos(resultado, strlen(resultado)) ){
+				estadoMP = MefProcesamiento_LeyendoComandoSiguiente;
+			}
+			break;
+	}
 }
