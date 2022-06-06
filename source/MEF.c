@@ -7,8 +7,10 @@
 
 #include "MEF.h"
 #include "ringBuffer.h"
-#include "uart0_drv.h"
+#include "fsl_debug_console.h"
 
+//#include "uart0_drv.h"
+#include "uart1_drv.h"
 /* ================== [Enumeraciones y estructuras para determinar el comando recibido] ================== */
 typedef enum{
 	LED_T = 0,
@@ -52,6 +54,8 @@ typedef enum{
 
 /* ==================[variables internas] ================== */
 void *cmdBuffer;
+static uint8_t rxBuffer[20];
+static int32_t ret;
 
 /* ================== [funciones internas para MEF RX] ================== */
 /*
@@ -96,30 +100,35 @@ IdPeriferico definePeriferico(TipoPeriferico tipoPeriferico, uint8_t tmpRxByte){
 }
 
 bool MEF_readByte(uint8_t *retPtr){
-	return (uart0_drv_recDatos(retPtr, 1) == 1);
+	return (uart_drv_recDatos(retPtr, 1) == 1);
 }
 
 
 /* ================== [funciones publicas para MEF RX] ================== */
+
+uint8_t msg[] = "Hola\r\n";
+
 void MEF_RX_init(){
-	uart0_drv_init();
+	uart_drv_init();
 	cmdBuffer = ringBuffer_init(RB_SIZE);
+	uart_drv_envDatos(msg, sizeof(msg)-1);
 }
 
 void MEF_RX_tick(){
 	static MEF_Rx_estados estado = MefRx_EsperandoSTX;
-	static bool start, MSBok, byteAvailable;
+	static bool start, MSBok;
 	TipoPeriferico tmpPeriferico = ERROR_T;
 	TipoComando tmpComando = TIPO_COMANDO_ERROR;
 	static Comando comando;
-	uint8_t *rxChar;
 
-	byteAvailable = MEF_readByte(rxChar);
+
+	ret = uart_drv_recDatos(rxBuffer, sizeof(rxBuffer));
+	PRINTF("%c\n", ret);
 
 	switch(estado){
 		case MefRx_EsperandoSTX:
-			if(byteAvailable){
-				if(*rxChar == STX){ // ':'
+			if(ret){
+				if(rxBuffer[0] == STX){ // ':'
 					estado = MefRx_LeyendoID;
 					start = true;
 					MSBok = false;
@@ -127,26 +136,26 @@ void MEF_RX_tick(){
 			}
 			break;
 		case MefRx_LeyendoID:
-			if(byteAvailable){
-				if(*rxChar == 0x31 && start){ // '1'
+			if(ret){
+				if(rxBuffer[0] == 0x31 && start){ // '1'
 					start = false;
 					MSBok = true;
 				}
-				if(*rxChar == 0x30 && MSBok){ // '0'
+				if(rxBuffer[0] == 0x30 && MSBok){ // '0'
 					estado = MefRx_LeyendoPerifericoMSB;
 				}
-				if( (start && (*rxChar != 0x31) ) || (MSBok && (*rxChar != 0x30)) ){ // hubo algun error en la recepcion
+				if( (start && (rxBuffer[0] != 0x31) ) || (MSBok && (rxBuffer[0] != 0x30)) ){ // hubo algun error en la recepcion
 					estado = MefRx_EsperandoSTX;
 				}
 			}
 			break;
 		case MefRx_LeyendoPerifericoMSB:
-			if(byteAvailable){
-				if(*rxChar == 0x30){
+			if(ret){
+				if(rxBuffer[0] == 0x30){
 					tmpPeriferico = LED_T;
-				}else if(*rxChar == 0x31){
+				}else if(rxBuffer[0] == 0x31){
 					tmpPeriferico = SW_T;
-				}else if(*rxChar == 0x32){
+				}else if(rxBuffer[0] == 0x32){
 					tmpPeriferico = ACC_T;
 				}else{
 					tmpPeriferico = ERROR_T;
@@ -159,8 +168,8 @@ void MEF_RX_tick(){
 			}
 			break;
 		case MefRx_LeyendoPerifericoLSB:
-			if(byteAvailable){
-				comando.periferico = definePeriferico(tmpPeriferico, *rxChar);
+			if(ret){
+				comando.periferico = definePeriferico(tmpPeriferico, rxBuffer[0]);
 				if(comando.periferico == ID_ERROR){
 					estado = MefRx_EsperandoSTX;
 				}else if(comando.periferico == LED_ID_ROJO || comando.periferico == LED_ID_VERDE){
@@ -171,12 +180,12 @@ void MEF_RX_tick(){
 			}
 			break;
 		case MefRx_LeyendoAccion:
-			if(byteAvailable){
-				if(*rxChar == 0x45){ // accion recibida E
+			if(ret){
+				if(rxBuffer[0] == 0x45){ // accion recibida E
 					tmpComando = ENCENDER;
-				}else if(*rxChar == 0x41){ // accion recibida A
+				}else if(rxBuffer[0] == 0x41){ // accion recibida A
 					tmpComando = APAGAR;
-				}else if(*rxChar == 0x54){ // accion recibida T
+				}else if(rxBuffer[0] == 0x54){ // accion recibida T
 					tmpComando = TOGGLE;
 				}else{
 					tmpComando = TIPO_COMANDO_ERROR;
@@ -190,8 +199,8 @@ void MEF_RX_tick(){
 			}
 			break;
 		case MefRx_EsperandoETX:
-			if(byteAvailable){
-				if(*rxChar == ETX){
+			if(ret){
+				if(rxBuffer[0] == ETX){
 					estado = MefRx_EsperandoSTX;
 					ringBuffer_putData(cmdBuffer, (uint8_t)&comando); // revisar. Habia pensado en hacer un RB de punteros a Comando
 				}

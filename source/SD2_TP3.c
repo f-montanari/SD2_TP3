@@ -40,13 +40,19 @@
 #include "MKL46Z4.h"
 #include "fsl_debug_console.h"
 /* TODO: insert other include files here. */
+
 #include "SD2_board.h"
+#include "SD2_I2C.h"
 #include "fsl_lpsci.h"
 #include "fsl_port.h"
 #include "board.h"
 #include "MKL46Z4.h"
 #include "pin_mux.h"
-#include "uart0_drv.h"
+#include "key.h"
+
+
+//#include "uart0_drv.h"
+#include "uart1_drv.h"
 #include "mma8451.h"
 #include "MEF.h"
 
@@ -61,6 +67,7 @@ int main(void) {
 
 	// Se inicializan funciones de la placa
 	board_init();
+	key_init();
 
 	/* =========== I2C =================== */
 	SD2_I2C_init();
@@ -70,17 +77,17 @@ int main(void) {
 	mma8451_setDataRate(DR_12p5hz);
 
 	//Inicializa driver de UART0
-	uart0_drv_init();
+	uart_drv_init();
 
 	//inicializa interrupción de systick cada 1 ms
 	SysTick_Config(SystemCoreClock / 1000U);
 
 	/* ===== MEF ===== */
-	MEF_init();
+	MEF_RX_init();
 
     /* Enter an infinite loop, just incrementing a counter. */
     while(1) {
-    	MEF_tick();
+    	MEF_RX_tick();
     }
     return 0 ;
 }
