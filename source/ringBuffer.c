@@ -38,7 +38,21 @@
 
 /*==================[macros and definitions]=================================*/
 
+typedef struct{
+    int32_t indexRead;
+    int32_t indexWrite;
+    int32_t count;
+    int32_t size;
+    uint8_t *pBuf;
+}ringBuferData_struct;
 
+typedef struct{
+    int32_t indexRead;
+    int32_t indexWrite;
+    int32_t count;
+    int32_t size;
+    Comando *pBuf;
+}ringBuferDataComando_t;
 
 /*==================[internal data declaration]==============================*/
 
@@ -125,6 +139,83 @@ bool ringBuffer_isFull(void *pRb){
 
 bool ringBuffer_isEmpty(void *pRb){
     ringBuferData_struct *rb = pRb;
+    return rb->count == 0;
+}
+
+
+void *ringBufferComando_init(int32_t size){
+    ringBuferDataComando_t *rb;
+
+    rb = malloc(sizeof(ringBuferDataComando_t));
+    if(rb == NULL){
+    	return NULL;
+    }
+
+    rb->pBuf = malloc(size);
+    if(rb->pBuf == NULL){
+    	return NULL;
+	}
+
+    rb->indexRead = 0;
+    rb->indexWrite = 0;
+    rb->count = 0;
+    rb->size = size;
+
+    return rb;
+}
+
+bool ringBufferComando_putData(void *pRb, Comando data){
+    ringBuferDataComando_t *rb = pRb;
+    bool ret = true;
+
+    rb->pBuf[rb->indexWrite] = data;
+
+    rb->indexWrite++;
+    if (rb->indexWrite >= rb->size){
+    	rb->indexWrite = 0;
+    }
+
+    if (rb->count < rb->size){
+        rb->count++;
+    }else{
+        /* si el buffer está lleno incrementa en uno indexRead
+         * haciendo que se pierda el dato más viejo y devuelve
+         * false para indicar que se estan perdiendo datos */
+        rb->indexRead++;
+        if (rb->indexRead >= rb->size)
+            rb->indexRead = 0;
+        ret = false;
+    }
+
+    return ret;
+}
+
+bool ringBufferComando_getData(void *pRb, Comando *data){
+    ringBuferDataComando_t *rb = pRb;
+    bool ret = true;
+
+    if (rb->count){
+        *data = rb->pBuf[rb->indexRead];
+
+        rb->indexRead++;
+        if (rb->indexRead >= rb->size){
+        	rb->indexRead = 0;
+        }
+        rb->count--;
+    }else{
+        ret = false;
+    }
+
+    return ret;
+}
+
+bool ringBufferComando_isFull(void *pRb){
+    ringBuferDataComando_t *rb = pRb;
+    return rb->count == rb->size;
+}
+
+bool ringBufferComando_isEmpty(void *pRb){
+    ringBuferDataComando_t *rb = pRb;
     return rb->count == 0;
 }
 
