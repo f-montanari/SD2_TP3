@@ -29,7 +29,7 @@ static uint8_t txBuffer_dma[TX_BUFFER_DMA_SIZE];
 static lpuart_dma_handle_t lpuartDmaHandle;
 static dma_handle_t lpuartTxDmaHandle;
 static void *rxRingBufferPtr;
-volatile int8_t rxByte;
+
 volatile bool txOnGoingDma = false;
 volatile bool txOnGoingUart = false;
 
@@ -39,20 +39,32 @@ volatile bool txOnGoingUart = false;
 
 /*==================[internal functions definition]==========================*/
 
+/*
+ * Esta función quedó del ejemplo. Ver si es necesario
+ */
 static void LPUART_UserCallback(LPUART_Type *base, lpuart_dma_handle_t *handle, status_t status, void *userData){
 
-    if (kStatus_LPUART_TxIdle == status){
+	if(kStatus_LPUART_TxBusy == status){
+		txOnGoingUart = true;
+	}
+	if (kStatus_LPUART_TxIdle == status){
         txOnGoingDma = false;
-        txOnGoingUart = true;
     }
 }
 
 void LPUART0_IRQHandler(void){
-    if( kLPUART_RxDataRegFullFlag & LPUART_GetStatusFlags(TP3_UART) ){
+    if( (kLPUART_RxDataRegFullFlag 			  & LPUART_GetStatusFlags(TP3_UART)) &&
+    	(kLPUART_RxDataRegFullInterruptEnable & LPUART_GetEnabledInterrupts(TP3_UART)) ){
+
+    	uint8_t rxByte;
     	rxByte = LPUART_ReadByte(TP3_UART); // limpio bandera ISR
     	ringBuffer_putData(rxRingBufferPtr, rxByte);
     }
-    if( kLPUART_TxDataRegEmptyFlag & LPUART_GetStatusFlags(TP3_UART) ){
+    if( (kLPUART_TransmissionCompleteFlag 			 & LPUART_GetStatusFlags(TP3_UART)) &&
+		(kLPUART_TransmissionCompleteInterruptEnable & LPUART_GetEnabledInterrupts(TP3_UART)) ){
+
+    	LPUART_DisableInterrupts(TP3_UART, kLPUART_TransmissionCompleteInterruptEnable);
+    	LPUART_ClearStatusFlags(TP3_UART, kLPUART_TransmissionCompleteFlag);
     	txOnGoingUart = false;
     }
 }
@@ -63,8 +75,6 @@ void uart0_drv_init(void){
 
 	lpuart_config_t config;
 
-    // Crear RingBuffer para Rx
-	lpsciRingBufferRx = ringBuffer_init(BUFFER_DMA_SIZE);
 
     CLOCK_SetLpuart0Clock(0x1U);
 
@@ -83,7 +93,7 @@ void uart0_drv_init(void){
      * config.enableRx = false;
      */
     LPUART_GetDefaultConfig(&config);
-    config.baudRate_Bps = 9600;
+    config.baudRate_Bps = 115200;
     config.parityMode = kLPUART_ParityDisabled;
     config.stopBitCount = kLPUART_OneStopBit;
     config.enableTx = true;
@@ -93,6 +103,7 @@ void uart0_drv_init(void){
 
     /* Habilita interrupciones */
     LPUART_EnableInterrupts(TP3_UART, kLPUART_RxDataRegFullInterruptEnable);
+    LPUART_EnableInterrupts(TP3_UART, kLPUART_TransmissionCompleteInterruptEnable);
     //LPUART_EnableInterrupts(TP3_UART, kLPUART_TxDataRegEmptyInterruptEnable);
     EnableIRQ(TP3_UART_IRQ);
 
@@ -121,12 +132,6 @@ void uart0_drv_init(void){
             NULL,
             &lpuartTxDmaHandle,
             NULL);
-
-    /* Habilita interrupciones */
-	LPSCI_EnableInterrupts(UART0, kLPSCI_TransmissionCompleteInterruptEnable);
-	LPSCI_EnableInterrupts(UART0, kLPSCI_RxDataRegFullInterruptEnable);
-	EnableIRQ(UART0_IRQn);
-
 }
 
 int32_t uart0_drv_envDatos(uint8_t *pBuf, int32_t size){
@@ -143,6 +148,7 @@ int32_t uart0_drv_envDatos(uint8_t *pBuf, int32_t size){
 		xfer.dataSize = size;
 		txOnGoingDma = true;
 		LPUART_TransferSendDMA(TP3_UART, &lpuartDmaHandle, &xfer);
+		LPUART_EnableInterrupts(TP3_UART, kLPUART_TransmissionCompleteInterruptEnable);
 		return(size);
 	}
 }
@@ -157,7 +163,8 @@ int32_t uart0_drv_recDatos(uint8_t *pBuf, int32_t size){
     int32_t ret = 0;
 
     /* entra sección de código crítico */
-    NVIC_DisableIRQ(TP3_UART_IRQ);
+    //NVIC_DisableIRQ(TP3_UART_IRQ);
+    DisableIRQ(TP3_UART_IRQ);
 
     while (!ringBuffer_isEmpty(rxRingBufferPtr) && ret < size){
         ringBuffer_getData(rxRingBufferPtr, &pBuf[ret]);
@@ -165,7 +172,8 @@ int32_t uart0_drv_recDatos(uint8_t *pBuf, int32_t size){
     }
 
     /* sale de sección de código crítico */
-    NVIC_EnableIRQ(TP3_UART_IRQ);
+    //NVIC_EnableIRQ(TP3_UART_IRQ);
+    EnableIRQ(TP3_UART_IRQ);
 
     return ret;
 }
