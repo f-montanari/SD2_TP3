@@ -142,7 +142,6 @@ bool ringBuffer_isEmpty(void *pRb){
     return rb->count == 0;
 }
 
-
 void *ringBufferComando_init(int32_t size){
     ringBuferDataComando_t *rb;
 

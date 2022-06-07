@@ -96,13 +96,11 @@ bool ringBuffer_isFull(void *pRb);
 /* TODO: agregar comentarios */
 bool ringBuffer_isEmpty(void *pRb);
 
-
 void *ringBufferComando_init(int32_t size);
 bool ringBufferComando_putData(void *pRb, Comando data);
 bool ringBufferComando_getData(void *pRb, Comando *data);
 bool ringBufferComando_isFull(void *pRb);
 bool ringBufferComando_isEmpty(void *pRb);
-
 
 /*==================[cplusplus]==============================================*/
 #ifdef __cplusplus

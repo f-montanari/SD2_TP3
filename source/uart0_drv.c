@@ -30,7 +30,6 @@ static lpuart_dma_handle_t lpuartDmaHandle;
 static dma_handle_t lpuartTxDmaHandle;
 static void *rxRingBufferPtr;
 volatile int8_t rxByte;
-
 volatile bool txOnGoingDma = false;
 volatile bool txOnGoingUart = false;
 
@@ -40,9 +39,6 @@ volatile bool txOnGoingUart = false;
 
 /*==================[internal functions definition]==========================*/
 
-/*
- * Esta función quedó del ejemplo. Ver si es necesario
- */
 static void LPUART_UserCallback(LPUART_Type *base, lpuart_dma_handle_t *handle, status_t status, void *userData){
 
     if (kStatus_LPUART_TxIdle == status){
@@ -67,6 +63,8 @@ void uart0_drv_init(void){
 
 	lpuart_config_t config;
 
+    // Crear RingBuffer para Rx
+	lpsciRingBufferRx = ringBuffer_init(BUFFER_DMA_SIZE);
 
     CLOCK_SetLpuart0Clock(0x1U);
 
@@ -123,6 +121,12 @@ void uart0_drv_init(void){
             NULL,
             &lpuartTxDmaHandle,
             NULL);
+
+    /* Habilita interrupciones */
+	LPSCI_EnableInterrupts(UART0, kLPSCI_TransmissionCompleteInterruptEnable);
+	LPSCI_EnableInterrupts(UART0, kLPSCI_RxDataRegFullInterruptEnable);
+	EnableIRQ(UART0_IRQn);
+
 }
 
 int32_t uart0_drv_envDatos(uint8_t *pBuf, int32_t size){
